@@ -1,24 +1,40 @@
-resource "aws_security_group" "allow_ssh_access" {
+resource "aws_security_group" "mediate_gwynstance_access" {
   vpc_id = aws_vpc.mystique.id
 
-  ingress {
-    from_port = 22
-    to_port = 22
-    protocol = "tcp"
-    cidr_blocks = ["${var.home_cidr}"]
-  }
-
-  egress {
-    from_port = 0
-    to_port = 0
-    protocol = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+  lifecycle {
+    create_before_destroy = true
   }
 
   tags = {
-    Name = "allow_ssh_access"
+    Name = "mediate_access"
   }
 }
+
+resource aws_security_group_rule "allow_ssh" {
+  type = "ingress"
+
+  from_port = 22
+  to_port = 22
+
+  protocol = "tcp"
+
+  cidr_blocks = ["${var.home_cidr}"]
+  
+  security_group_id = aws_security_group.mediate_gwynstance_access.id
+}
+
+resource aws_security_group_rule "allow_all_egress" {
+  type = "egress"
+
+  from_port = 0
+  to_port = 0
+
+  protocol = "-1"
+
+  cidr_blocks = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.mediate_gwynstance_access.id
+}
+
 
 resource "aws_ebs_volume" "external_drive" {
   availability_zone =  aws_subnet.mystic.availability_zone
@@ -36,13 +52,12 @@ resource "aws_volume_attachment" "mount_external_drive" {
 }
 
 resource "aws_instance" "gwynstance" {
-
   ami = "ami-089fe97bc00bff7cc" #debian
 
   associate_public_ip_address = true
   key_name = aws_key_pair.access_aws.id
   instance_type = var.instance_type
-  vpc_security_group_ids = [aws_security_group.allow_ssh_access.id]
+  vpc_security_group_ids = [aws_security_group.mediate_gwynstance_access.id]
   subnet_id = aws_subnet.mystic.id
 
   tags = {
@@ -56,20 +71,4 @@ resource "aws_route53_record" "gwynstance" {
   type    = "A"
   ttl     = "1"
   records = [aws_instance.gwynstance.public_ip]
-}
-
-output "gwynstance_public_hostname" {
-  value = aws_route53_record.gwynstance.name
-}
-
-output "reminder_message" {
-  value = "update your ansible hosts file while you wait for dns to update"
-}
-
-output "gwynstance_public_address" {
-  value = aws_instance.gwynstance.public_ip
-}
-
-output "gwynstance_type" {
-  value = aws_instance.gwynstance.instance_type
 }
